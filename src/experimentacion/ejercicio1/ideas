@@ -1,0 +1,38 @@
+IDEAS DE EXPERIMENTOS
+	
+	1- aumentar paradas
+		aumentar de a 1
+		de 1 a 20
+		capacidad de mochila en 5
+		cantidad de gimnasios en 3
+	
+	2- aumentar gimnasios
+		aumentar de a 1
+		de 1 a 20
+		capacidad de mochila en 5
+		cantidad de paradas en 10
+	
+	3- aumentar capacidad de mochila
+		aumentar de a 1
+		de 1 a 20
+		cantidad de gimnasios en 7
+		cantidad de paradas en 7
+
+	4- mejor vs peor aumentando paradas
+		cantidad de gimnasios en 3
+		cantidad de paradas arranca en 3
+		aumentar de a 1
+		mochila es siempre 6
+		pociones gimnasio es siempre 3
+
+*mejor caso
+	casos donde haya paradas muuuy lejanas y que la solucion sea entre nodos muy cercanos
+
+*peor caso
+	casos donde todo este muy cerca y todas las paradas tengan que analizarse
+
+	5- corro tsp vs no tsp y veo que onda
+		cantidad de gimnasios aumenta
+		cantidad de paradas aumenta
+		mochila es siempre 6
+		pociones gimnasio va de 0 a 3

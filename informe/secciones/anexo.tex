@@ -1,0 +1,931 @@
+\subsection{Estructura básica y funciones auxiliares}
+\label{sec: anexo_ejercicio}
+\par Aquí se define la clase \textbf{Ejercicio}, la cual continene las estructuras utilizadas para almacenar el grafo. También recibe la entrada y la almacena en la estructura. Y tiene funciones que son utilizadas en los distintos ejercicios.
+
+\begin{lstlisting}
+class ejercicio {
+protected:
+  double distanciaMinima;
+  vector<int> solucion;
+  vector<tuple<int,int,int>> gimnasios;
+  vector<tuple<int,int>> pokeparadas;
+  vector<vector<double>> distancias;
+  int mochila;
+  int pocionesActuales;
+  bool entrada_invalida = false;
+
+
+public:
+  //-------------------------------------------------------------------------------------------
+  //----- CONSTRUCTOR: Recibe los datos de entrada y llena las estructuras
+  //-------------------------------------------------------------------------------------------
+  ejercicio (){
+    // parseo
+    int n, m; // mochila = k
+    cin >> n >> m >> mochila;
+
+    int posx, posy, pociones;
+
+    //--vamos a calcular la minima cantidad de pociones necesarias para matar a todos los gimnasios
+    int min_pociones_necesarias = 0;
+
+    for (size_t i = 0; i < n; i++) {
+      cin >> posx >> posy >> pociones;
+      //--acumula la cantidad de pociones necesarias para matar a todos los gimnasios
+      min_pociones_necesarias += pociones;
+      //--si se necesitan mas pociones de las que entran en la mochila => no hay solucion
+      if (pociones > mochila) {
+        entrada_invalida = true;
+      }
+      gimnasios.push_back(make_tuple(posx,posy,pociones));
+    }
+
+    for (size_t i = 0; i < m; i++) {
+      cin >> posx >> posy;
+      pokeparadas.push_back(make_tuple(posx,posy));
+    }
+
+    for (size_t i = 0; i < n+m; i++) {
+      vector<double> dummy;
+      distancias.push_back(dummy);
+      for (size_t j = 0; j < n+m; j++) {
+        int difX = 0;
+        int difY = 0;
+        if(i<n){ // el i es un gimnasio o una pokeparada?
+          difX = get<0>(gimnasios[i]);
+          difY = get<1>(gimnasios[i]);
+        }else{
+          difX = get<0>(pokeparadas[i-n]);
+          difY = get<1>(pokeparadas[i-n]);
+        }
+        if(j<n){
+          difX -= get<0>(gimnasios[j]);
+          difY -= get<1>(gimnasios[j]);
+        }else{
+          difX -= get<0>(pokeparadas[j-n]);
+          difY -= get<1>(pokeparadas[j-n]);
+        }
+        distancias[i].push_back(sqrt(pow(difX,2)+pow(difY,2)));
+      }
+    }
+
+    pocionesActuales = 0;
+    distanciaMinima = -1;
+
+    //-- si no alcanzan las pokeparadas para juntar las pociones necesarias para matar a todos => no hay solucion
+    if (min_pociones_necesarias > pokeparadas.size()*3) {
+      entrada_invalida = true;
+    }
+  }
+
+
+  //-------------------------------------------------------------------------------------------
+  //----- IMPLEMENTACIONES DE ALGORITMOS GOLOSOS
+  //-------------------------------------------------------------------------------------------
+
+  //--GOLOSO BASICO:
+  //--Trata de ir primero a los nodos mas cercanos. Sino va a una parada cercana.
+  void golosoDeterministico(){
+    // este goloso agarra el gimnasio mas cercano que puede matar
+    int cant_gimnasios = gimnasios.size();
+    int cant_poke = pokeparadas.size();
+    int total = cant_poke+cant_gimnasios; // n+m
+
+    // agarro el primer gimnasio y me voy a la poke parada mas cercana para arrancar
+    int pokeCercano = pokeparadaMasCercana(0);
+
+    pocionesActuales = sumaSaturada(pocionesActuales, 3);
+    int gimnasios_recorridos = 0;
+    int nodoActual = pokeCercano+cant_gimnasios;
+    solucion.push_back(nodoActual+1);
+
+    while (gimnasios_recorridos < cant_gimnasios) {
+      int gimnasiocercano = -1;
+      int distGim = -1;
+      for (size_t i = 0; i < cant_gimnasios; i++) { // busco el mas cercano que puedo matar
+        if ((distGim > distancias[i][nodoActual] || distGim == -1)// la distancia es menor
+          && pocionesActuales >= get<2>(gimnasios[i]) // y me alcanzan las pociones
+          && !yaLoRecorri(i)) // y no recorri este gimnasio
+        {
+          distGim = distancias[i][nodoActual];
+          gimnasiocercano = i;
+        }
+      }
+      if(gimnasiocercano == -1){ // no encontre gimnasio para matar, busco una pokeparada cerca
+        pokeCercano = pokeparadaMasCercana(nodoActual);
+        if (pokeCercano < 0) { // no quedan paradas => no puedo matar los gimnasios restantes
+          break;
+        } else {
+          pocionesActuales = sumaSaturada(pocionesActuales,3);
+          nodoActual = pokeCercano+cant_gimnasios;
+        }
+      } else { // mato el gimnasio!
+        ++gimnasios_recorridos;
+        nodoActual = gimnasiocercano;
+        pocionesActuales -= get<2>(gimnasios[nodoActual]);
+      }
+      solucion.push_back(nodoActual+1);
+    }
+
+    if (gimnasios_recorridos < cant_gimnasios) {
+      //-distancia invalida
+      distanciaMinima = -1;
+    } else {
+      //-distancia
+      distanciaMinima = 0;
+      for(int i = 0; i < solucion.size()-1; ++i){
+        distanciaMinima += distancias[solucion[i]-1][solucion[i+1]-1];
+      }
+    }
+
+    return;
+  }
+
+  //--GOLOSO RANDOM:
+  //--Recibe los siguientes parametros:
+  //----nodo_inicial -> si quiere arrancar por una parada en particular
+  //----orden_preferencia:
+  //------0 va al mas cercano primero
+  //------1 va al mas lejano primero
+  //------2 va al que mas pociones necesite para matar
+  //------3 va al que menos pociones necesite para matar
+  //----cant_random -> la cantidad de nodos entre los que se va a tomar un random
+  void calculaGoloso(int nodo_inicial = -1, int orden_preferencia = 0, int cant_random = 1) {
+
+    int cant_gimnasios = gimnasios.size();
+    int cant_poke = pokeparadas.size();
+    int total = cant_poke+cant_gimnasios; // n+m
+
+    int pocionesAct = 3;
+    int gimnasios_recorridos = 0;
+
+    int nodoActual = nodo_inicial;
+    int pokeCercano;
+
+    //--si no se paso un nodo de inicio como parametro
+    if (nodo_inicial < 0) {
+      // agarro una parada random
+      if (cant_poke == 0) {
+        nodoActual = 0;
+        ++gimnasios_recorridos;
+      } else {
+        nodoActual = cant_gimnasios + rand() % cant_poke;
+        pocionesAct = sumaSaturada(pocionesAct,3);
+      }
+    }
+    solucion.clear();
+    solucion.push_back(nodoActual + 1);
+
+    while (gimnasios_recorridos < cant_gimnasios) {
+      vector<tuple<int,float,int>> gimnasios_posibles; // vector<id,distancia,pociones>
+      int gimnasiocercano = -1;
+      for (size_t i = 0; i < cant_gimnasios; i++) { // busco los gimnasios que puedo matar
+        if (pocionesAct >= get<2>(gimnasios[i]) // y me alcanzan las pociones
+          && !yaLoRecorri(i)) // y no recorri este gimnasio
+        {
+            gimnasios_posibles.push_back(make_tuple(i,distancias[i][nodoActual],get<2>(gimnasios[i])));
+        }
+      }
+      if(gimnasios_posibles.size() != 0){
+
+        // actualizo cant random para que no haga randomen un cjto mayor
+        int tope_random = cant_random > gimnasios_posibles.size() ? gimnasios_posibles.size() : cant_random;
+        int random = rand()%tope_random;
+        switch (orden_preferencia) {
+          case 0:
+            // busco los mas cercanos que pueda matar
+            sort(gimnasios_posibles.begin(), gimnasios_posibles.end(), [](const tuple<int,float,int>& a,
+            const tuple<int,float,int>& b) -> bool
+            {
+              return std::get<1>(a) > std::get<1>(b);
+            });
+            gimnasiocercano = get<0>(gimnasios_posibles[random]);
+            break;
+
+          case 1:
+            // busco los mas lejanos que pueda matar
+            sort(gimnasios_posibles.begin(), gimnasios_posibles.end(), [](const tuple<int,float,int>& a,
+            const tuple<int,float,int>& b) -> bool
+            {
+              return std::get<1>(a) > std::get<1>(b);
+            });
+            gimnasiocercano = get<0>(gimnasios_posibles[gimnasios_posibles.size()-1-random]);
+            break;
+
+          case 2:
+            // busco los que mas pociones necesite para matar y que pueda matar
+            sort(gimnasios_posibles.begin(), gimnasios_posibles.end(), [](const tuple<int,float,int>& a,
+            const tuple<int,float,int>& b) -> bool
+            {
+              return std::get<2>(a) > std::get<2>(b);
+            });
+            gimnasiocercano = get<0>(gimnasios_posibles[random]);
+            break;
+
+          case 3:
+            // busco los que menos pociones necesite para matar y que pueda matar
+            sort(gimnasios_posibles.begin(), gimnasios_posibles.end(), [](const tuple<int,float,int>& a,
+            const tuple<int,float,int>& b) -> bool
+            {
+              return std::get<2>(a) > std::get<2>(b);
+            });
+            gimnasiocercano = get<0>(gimnasios_posibles[gimnasios_posibles.size()-1-random]);
+            break;
+        }
+      }
+      if (gimnasiocercano == -1) { // no encontre gimnasio para matar, busco una pokeparada cerca
+        pokeCercano = pokeparadaMasCercana(nodoActual);
+        if (pokeCercano < 0) { // no quedan paradas => no puedo matar los gimnasios restantes
+          break;
+        } else {
+          pocionesAct = sumaSaturada(pocionesAct,3);
+          nodoActual = pokeCercano+cant_gimnasios;
+        }
+      } else { // mato el gimnasio!
+        ++gimnasios_recorridos;
+        nodoActual = gimnasiocercano;
+        pocionesAct -= get<2>(gimnasios[nodoActual]);
+      }
+      solucion.push_back(nodoActual+1);
+    }
+
+    //--si faltaron gimnasios por recorrer
+    if (gimnasios_recorridos < cant_gimnasios) {
+      //-distancia invalida
+      distanciaMinima = -1;
+    } else {
+      //-distancia
+      distanciaMinima = 0;
+      for(int i = 0; i < solucion.size()-1; ++i){
+        distanciaMinima += distancias[solucion[i]-1][solucion[i+1]-1];
+      }
+    }
+
+    return;
+  }
+
+
+  //-------------------------------------------------------------------------------------------
+  //----- IMPLEMENTACION DE BUSQUEDA LOCAL
+  //-------------------------------------------------------------------------------------------
+
+  //--Recibe el parametro:
+  //----codigo_vecindades -> binario indicando cuales vecindades que se quieren usar y cuales no
+  void busquedaLocal(string codigo_vecindades = "1111") {
+    //--se usa esta variable para ver si se mejoro al solucion en el ultima iteracion
+    bool cambio = true;
+
+    int cant_nodos = gimnasios.size() + pokeparadas.size();
+    int repeticiones = 0;
+
+    //--mientras se mejore
+    while(cambio && repeticiones < cant_nodos){
+
+      cambio = false;
+
+      vector<vector<int> > vecindad;
+
+      //--pide las vecindades de la solucion actual
+      for (int i = 0; i < 3; i++) {
+
+        //--si la funcion de vecindad i esta marcada para ser usada
+        if (codigo_vecindades[i] == '1') {
+
+          vector<vector<int> > vecindad_nueva;
+
+          //--llama a cada vecindad distinta
+          switch (i) {
+
+            case 0:
+              //--cambia una parada del camino por una de afuera
+              vecindad_nueva = vecinosConLosDeAfuera();
+              break;
+
+            case 1:
+              //--cambia entre dos nodos adyacentes del camino (sin importar el tipo)
+              vecindad_nueva = vecinosConLosAdyacentes();
+              break;
+
+            case 2:
+              //--cambia entre dos paradas del camino
+              vecindad_nueva = vecinosConLosDeAdentro();
+              break;
+
+            case 3:
+              //--cambia entre dos gimnasios del camino
+              vecindad_nueva = vecinosConLosGim();
+              break;
+
+          }
+
+          //--si se tiene una nueva vecindad
+          if (vecindad_nueva.size() > 0) {
+            //--se agregan estos vecinos al final
+            vecindad.insert(vecindad.begin(), vecindad_nueva.begin(), vecindad_nueva.end());
+          }
+
+        }
+
+      }
+
+      //--si la vecindad no esta vacia
+      if(vecindad.size() > 0) {
+
+        //--busca el mejor vecino
+        vector<int> mejor_vecino = minimoVecino(vecindad);
+
+        double dist_mejor_vecino = calcularDistancia(mejor_vecino);
+        double dist_solucion = calcularDistancia(solucion);
+
+        //--si el vecino es mejor que la solucion actual
+        if (dist_mejor_vecino < dist_solucion) {
+
+          //--cambia la solucion
+          cambio = true;
+
+          solucion = mejor_vecino;
+          distanciaMinima = dist_mejor_vecino;
+
+        }
+      }
+
+      //--aumenta el contador de repeticiones
+      repeticiones++;
+    }
+
+    return;
+  }
+
+
+
+  //-------------------------------------------------------------------------------------------
+  //----- IMPLEMENTACION DE VECINDADES
+  //-------------------------------------------------------------------------------------------
+
+  //--Vecindad 1: cambia paradas que esten en el camino por paradas que no esten en el camino
+  vector <vector<int>> vecinosConLosDeAfuera() {
+    int pokeNueva = 0;
+    int pokeVieja = 0;
+    vector<vector<int>> resultado;
+    vector<int> solucionAMejorar = solucion;
+    vector<tuple<int,int> > pokeswaps = pokeparadas;
+    for( int i = 0; i< solucionAMejorar.size(); i++) {
+      if (esPokeParada(solucionAMejorar[i])) {
+        for (int j = 0; j < pokeswaps.size(); j ++) {
+          if (NoEstaEnLaSolucion(j + gimnasios.size(), solucionAMejorar)) {
+            pokeNueva = j + gimnasios.size()+1;
+            pokeVieja = solucionAMejorar[i];
+            solucionAMejorar[i] = pokeNueva;
+            resultado.push_back(solucionAMejorar);
+            solucionAMejorar[i] = pokeVieja; // vuelvo todo como estaba...
+          }
+        }
+      }
+    }
+    return resultado;
+  }
+  //--Vecindad 2: cambia nodos por los adyacentes, sin importar el tipo
+  vector<vector<int>> vecinosConLosAdyacentes() {
+      vector<vector<int>> resultado;
+      vector<int> solucionAMejorar = this->solucion;
+      double distanciaNueva = calcularDistancia(solucionAMejorar);
+      double distanciaParcial = distanciaNueva;
+      for( int i = 0; i < solucionAMejorar.size() - 1 ; i++) {
+        swap(solucionAMejorar[i], solucionAMejorar[i+1]);
+        if (esValido(solucionAMejorar)) {
+            resultado.push_back(solucionAMejorar);
+        }
+          swap(solucionAMejorar[i+1], solucionAMejorar[i]);
+      }
+      return resultado;
+  }
+
+  //--Vecindad 3: cambia de lugar paradas del camino
+  vector<vector<int>> vecinosConLosDeAdentro() {
+    int pokeNueva = 0;
+    int pokeVieja = 0;
+    vector<vector<int>> resultado;
+    vector<int> solucionAMejorar = this->solucion;
+    for( int i = 0; i< solucionAMejorar.size(); i++) {
+      if (esPokeParada(solucionAMejorar[i])) {
+        for (int j = i+1; j < solucionAMejorar.size(); j ++) {
+          if (esPokeParada(solucionAMejorar[j])) {
+             swap (solucionAMejorar[i], solucionAMejorar[j]);
+             if (esValido(solucionAMejorar)) {
+                resultado.push_back(solucionAMejorar);
+            }
+            swap (solucionAMejorar[j], solucionAMejorar[i]); // dejo todo como estaba.
+          }
+        }
+      }
+    }
+
+    return resultado;
+  }
+
+  //--Vecindad 3: cambia de lugar gimnasios del camino
+  vector<vector<int>> vecinosConLosGim() {
+    int pokeNueva = 0;
+    int pokeVieja = 0;
+    vector<vector<int>> resultado;
+    vector<int> solucionAMejorar = this->solucion;
+    for( int i = 0; i< solucionAMejorar.size(); i++) {
+      if (!esPokeParada(solucionAMejorar[i])) {
+        for (int j = i+1; j < solucionAMejorar.size(); j ++) {
+            if (!esPokeParada(solucionAMejorar[j])) {
+               swap (solucionAMejorar[i], solucionAMejorar[j]);
+               if (esValido(solucionAMejorar)) {
+                  resultado.push_back(solucionAMejorar);
+              }
+              swap (solucionAMejorar[j], solucionAMejorar[i]); // dejo todo como estaba.
+            }
+         }
+      }
+    }
+    return resultado;
+  }
+
+
+
+
+  //-------------------------------------------------------------------------------------------
+  //----- FUNCIONES AUXILIARES
+  //-------------------------------------------------------------------------------------------
+
+  //--Verifica si el camino pasado por parametro es valido
+  bool esValido(vector<int> camino){
+    int pociones = 0;
+    for (size_t i = 0; i < camino.size(); i++) {
+      if (camino[i] > gimnasios.size()) {
+        pociones = sumaSaturada(pociones,3);
+      }else{
+        if (get<2>(gimnasios[camino[i]-1]) > pociones) {
+          return false;
+        }
+        pociones = pociones - get<2>(gimnasios[camino[i]-1]);
+      }
+    }
+    return true;
+  }
+
+  //--Busca la pokeparada mas cercana al nodo pasado como parametro
+  int pokeparadaMasCercana(int nodo){
+    int pokeCercano = -1;
+    int distPoke = -1;
+    for (size_t i = 0; i < pokeparadas.size(); i++) {
+      if((distPoke > distancias[i+gimnasios.size()][nodo] || distPoke == -1) && !yaLoRecorri(i+gimnasios.size())){
+        distPoke = distancias[i+gimnasios.size()][nodo];
+        pokeCercano = i;
+      }
+    }
+    return pokeCercano;
+  }
+
+  //--Imprime la solucion en el formato pedido (si no es valida imprime -1)
+  void imprimir(){
+    if (distanciaMinima < 0) {
+      std::cout << distanciaMinima << endl;
+    } else {
+      std::cout << distanciaMinima << " " <<  solucion.size();
+      for (size_t i = 0; i < solucion.size(); i++) {
+        std::cout << " " << solucion[i];
+      }
+      std::cout << std::endl;
+    }
+  }
+
+  //--Realiza la suma saturada de pociones sin exceder el tamano la mochila
+  int sumaSaturada(int pocionesActuales, int pocionesNuevas){
+    int suma = pocionesActuales+pocionesNuevas;
+    if (suma > mochila) {
+      return mochila;
+    }else{
+      return suma;
+    }
+  }
+
+  //--Verifica si el nodo pasado por parametro ya se encuentra en la solucion actual
+  bool yaLoRecorri(int nodo){
+    int i = 0;
+    while (i<solucion.size() && solucion[i] != nodo+1) {
+      ++i;
+    }
+    return i<solucion.size();
+  }
+
+  //--Calcula la distancia del camino pasado por parametro
+  double calcularDistancia(vector<int> camino){
+    double distancia = 0;
+    for(int i = 1; i < camino.size(); ++i){
+        distancia += distancias[camino[i-1]-1][camino[i]-1];
+    }
+    return distancia;
+  }
+
+  //--Verifica si el nodo pasado por parametro es una pokeparada
+  bool esPokeParada(int nodo) {
+    return nodo > gimnasios.size();
+  }
+
+  //--Verifica si el nodo pasado por parametro no esta en la solucion
+  bool NoEstaEnLaSolucion( int pokePos, vector<int> solu){
+    bool result = true;
+    for (int i = 0; i < solu.size(); i++){
+        if (pokePos == solu[i]-1) {result = false;}
+    }
+    return result;
+  }
+
+  //--Verifica si la distancia nueva pasdad por parametro mejora a la distancia original pasada por parametro
+  bool MejoraSolucion(int distanciaNueva, int distanciaOriginal) {
+    return distanciaNueva < distanciaOriginal;
+  }
+
+  //--Calcula el minimo entre un vector de vecindades pasado por parametro
+  vector<int> minimoVecino(vector<vector<int> > vecinos) {
+    double minimo = calcularDistancia(vecinos[0]);
+    vector<int> mejor_vecino = vecinos[0];
+
+    for (int i = 1; i < vecinos.size(); i++) {
+      if (minimo > calcularDistancia(vecinos[i])) {
+        minimo = calcularDistancia(vecinos[i]);
+        mejor_vecino = vecinos[i];
+      }
+    }
+
+    return mejor_vecino;
+  }
+
+  virtual ~ejercicio (){};
+};
+\end{lstlisting}
+
+\newpage
+
+
+
+\subsection{Ejericio 1}
+\label{sec: anexo_ejercicio1}
+\begin{lstlisting}
+class ejercicio1 : ejercicio{
+  private:
+    int cant_gimnasios = gimnasios.size();
+    int cant_poke = pokeparadas.size();
+    int cant_total = cant_poke+cant_gimnasios; // n+m
+    vector<vector<vector<tuple<double, vector<int> > > > > instancias;
+    int version_podas = 4;
+    int num_rep = 0;
+
+  public:
+    ejercicio1 () : ejercicio(){}
+    void correr(){
+
+      distanciaMinima = -1;
+
+      //-- si ya nos dimos cuenta que la entrada no tenia solucion => ni corremos
+      if (!entrada_invalida) {
+
+        //--- calcula la cantidad de combinaciones de paradas y gimnasios necesarias (para las instancias)
+        unsigned int cant_combinaciones_gimnasios_paradas = pow(2, cant_total)-1;
+
+        //--- el formato de instancias es:
+        //------ instancias[combinacion gimnasios paradas][pociones][nodo actual] = < distancia, camino >
+        instancias = vector<vector<vector<tuple<double, vector<int> > > > >(cant_combinaciones_gimnasios_paradas + 1, vector<vector<tuple<double, vector<int> > > >(mochila + 1, vector<tuple<double, vector<int> > >(cant_total, tuple<double, vector<int> >(-2,vector<int>()))));
+  
+        //--arma un vector de gimnasios y otro de paradas
+        vector<int> indices_gimnasios;
+        for (int i = 0; i < cant_gimnasios; i++) {
+          indices_gimnasios.push_back(i);
+        }
+        vector<int> indices_paradas;
+        for (int i = 0; i < cant_poke; i++) {
+          indices_paradas.push_back(cant_gimnasios + i);
+        }
+
+        //--setea la cantidad de pociones inicial (despues de visitar la primer pokeparada)
+        int pociones_inicial = sumaSaturada(0, 3);
+
+        tuple < double, vector<int> > camino_minimo;
+
+        //-- a partir de la version 4 hace un goloso previo para tomar como cota
+        if (version_podas >= 4) {
+          golosoDeterministico();
+        }
+  
+        //--se toman cada una de las pokeparadas como iniciales 
+        for (int i = 0; i < cant_poke; i++) {
+
+          vector<int> indices_aux = indices_paradas;
+          indices_aux.erase(indices_aux.begin()+i);
+
+          vector<int> nuevo_camino;
+          nuevo_camino.push_back(indices_paradas[i] + 1);
+          camino_minimo = calcular_instancia(nuevo_camino, indices_aux, indices_gimnasios, pociones_inicial);
+        }
+
+      }
+
+      imprimir();
+    }
+
+    tuple< double, vector<int> > calcular_instancia(vector<int> camino_actual, vector<int> paradas_a_recorrer, vector<int> gimnasios_a_recorrer, int pociones) {
+
+      double distancia_recorrida = calcularDistancia(camino_actual);
+
+      int nodo_actual = camino_actual[camino_actual.size()-1] - 1;
+
+      //--calcula el numero de instancia actual
+      unsigned int comb_instancia = calcular_num_combinacion(paradas_a_recorrer, gimnasios_a_recorrer);
+
+      //--se fija si ya calculo la instancia actual
+      if (get<0>(instancias[comb_instancia][pociones][nodo_actual]) == -2) {
+        //--no tiene calculada esta instancia
+
+        //-- crea el camino parcial y lo setea como invalido
+        tuple < double, vector<int> > camino_minimo_parcial;
+        get<0>(camino_minimo_parcial) = -1;
+
+        //--- se fija si quedan gimnasios por recorrer
+        if (gimnasios_a_recorrer.size() == 0) {
+
+          //-- si no quedan gimnasios termino
+          get<0>(camino_minimo_parcial) = 0;
+          get<1>(camino_minimo_parcial).insert(get<1>(camino_minimo_parcial).begin(), nodo_actual+1);
+        
+        } else {
+
+          tuple < double, vector<int> > camino_minimo_aux;
+
+          //--a partir de la version 3 ordena los vecinos
+          if (version_podas >= 3) {
+
+            //--ordena los gimnasios y paradas por distancia
+            ordernar_por_distancia(nodo_actual, gimnasios_a_recorrer);
+            ordernar_por_distancia(nodo_actual, paradas_a_recorrer);
+
+          }
+
+          //-----------GIMNASIOS------------
+          for (int i = 0; i < gimnasios_a_recorrer.size(); i++) {
+            
+            //-- si alcanzan las pociones
+            if (get<2>(gimnasios[gimnasios_a_recorrer[i]]) <= pociones) {
+              //-- a partir de la version 2 se fija
+              //-- si la distancia al gimnasio es menor que el minimo parcial de la instancia actual
+              //-- y si la distancia al gimnasio es menor que el minimo parcial global
+              if (version_podas <= 1 || ( get<0>(camino_minimo_parcial) < 0 || get<0>(camino_minimo_parcial) > distancias[nodo_actual][gimnasios_a_recorrer[i]] ) && ( distanciaMinima < 0 || distanciaMinima > distancias[nodo_actual][gimnasios_a_recorrer[i]] ) ) {
+
+                //-- saca el gimnasio de los "a recorrer"
+                vector<int> gimnasios_aux = gimnasios_a_recorrer;
+                gimnasios_aux.erase(gimnasios_aux.begin() + i);
+
+                //-- crea un vector de camino para pasar como parametro a la nueva instancia
+                vector<int> camino_actual_aux = camino_actual;
+
+                camino_actual_aux.push_back(gimnasios_a_recorrer[i] + 1);
+                
+                //--calcula la nueva distancia
+                double nuevaDistancia = calcularDistancia(camino_actual_aux);
+
+                //-- llama a calcular la instancia siguiente
+                camino_minimo_aux = calcular_instancia(camino_actual_aux, paradas_a_recorrer, gimnasios_aux, pociones - get<2>(gimnasios[gimnasios_a_recorrer[i]]));
+
+                if (get<0>(camino_minimo_aux) >= 0) {
+                  get<1>(camino_minimo_aux).insert(get<1>(camino_minimo_aux).begin(), nodo_actual + 1);
+                  get<0>(camino_minimo_aux) = calcularDistancia(get<1>(camino_minimo_aux));
+
+                  //-- si el camino parcial no fue seteado o el camino actual es menor que el parcial
+                  if (get<0>(camino_minimo_parcial) < 0 || get<0>(camino_minimo_aux) < get<0>(camino_minimo_parcial)) {
+                  
+                    //-- tenemos un nuevo minimo
+                    camino_minimo_parcial = camino_minimo_aux;
+                  
+                  }
+                }
+              }
+            }
+          }
+
+          //-- se fija si ya tiene la mochila llena
+          if (pociones < mochila) {
+            
+            //--calcula la nueva cantidad de pociones
+            int nuevasPociones = sumaSaturada(pociones, 3);
+            
+            //-----------POKEPARADAS------------
+            for (int i = 0; i < paradas_a_recorrer.size(); i++) {
+
+              //-- a partir de la version 2 se fija
+              //-- si la distancia a la parada es menor que el minimo parcial de la instancia actual
+              //-- y si la distancia a la parada es menor que el minimo parcial global
+              if ( version_podas <= 1 || ( ( get<0>(camino_minimo_parcial) < 0 || get<0>(camino_minimo_parcial) > distancias[nodo_actual][paradas_a_recorrer[i]] ) && ( distanciaMinima < 0 || distanciaMinima > distancias[nodo_actual][paradas_a_recorrer[i]] ) ) ) {
+
+                //-- saca la parada de las "a recorrer"
+                vector<int> paradas_aux = paradas_a_recorrer;
+                paradas_aux.erase(paradas_aux.begin() + i);
+
+                //-- crea un vector de camino para pasar como parametro a la nueva instancia
+                vector<int> camino_actual_aux = camino_actual;
+                camino_actual_aux.push_back(paradas_a_recorrer[i] + 1);
+
+                //-- llama a calcular la instancia siguiente
+                camino_minimo_aux = calcular_instancia(camino_actual_aux, paradas_aux, gimnasios_a_recorrer, nuevasPociones);
+
+                if (get<0>(camino_minimo_aux) >= 0) {
+                  get<1>(camino_minimo_aux).insert(get<1>(camino_minimo_aux).begin(), nodo_actual + 1);
+                  get<0>(camino_minimo_aux) = calcularDistancia(get<1>(camino_minimo_aux));
+
+                  //-- si el camino parcial no fue seteado o el camino actual es menor que el parcial
+                  if (get<0>(camino_minimo_parcial) < 0 || get<0>(camino_minimo_aux) < get<0>(camino_minimo_parcial)) {
+                    
+                    //-- tenemos un nuevo minimo
+                    camino_minimo_parcial = camino_minimo_aux;
+                  
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        instancias[comb_instancia][pociones][nodo_actual] = camino_minimo_parcial;
+      
+      }
+
+      //-- se fija si con esta instancia se hizo un nuevo camino minimo
+      if (get<0>(instancias[comb_instancia][pociones][nodo_actual]) >= 0 && (distanciaMinima < 0 || distanciaMinima > get<0>(instancias[comb_instancia][pociones][nodo_actual]) + distancia_recorrida)) {
+
+        distanciaMinima = get<0>(instancias[comb_instancia][pociones][nodo_actual]) + distancia_recorrida;
+        solucion = camino_actual;
+        for (int i = 1; i < get<1>(instancias[comb_instancia][pociones][nodo_actual]).size(); i++) {
+          solucion.push_back(get<1>(instancias[comb_instancia][pociones][nodo_actual])[i]);
+        }
+
+      }
+
+      return instancias[comb_instancia][pociones][nodo_actual];
+    }
+
+    int calcular_num_combinacion(vector<int> pards, vector<int> gims) {
+      //-- calcula el numero de combinacion de nodos
+      int num_combinacion = 0;
+      for (int i = 0; i < gims.size(); i++) {
+        num_combinacion += pow(2, gims[i]);
+      }
+      for (int i = 0; i < pards.size(); i++) {
+        num_combinacion += pow(2, pards[i]);
+      }
+      
+      return num_combinacion;
+    }
+
+    void ordernar_por_distancia(int nodo_actual, vector<int> & vecinos) {
+      //--ordena solo por distancia
+      for (int i = 1; i < vecinos.size(); i++) {
+        int j = i;
+        while (j > 0 && distancias[nodo_actual][vecinos[j]] < distancias[nodo_actual][vecinos[j-1]]) {
+          int aux = vecinos[j-1];
+          vecinos[j-1] = vecinos[j];
+          vecinos[j] = aux;
+          j--;
+        }
+      }
+    }
+
+    virtual ~ejercicio1 (){}
+
+};
+\end{lstlisting}
+
+\newpage
+
+\subsection{Ejercicio 2}
+\label{sec: anexo_ejercicio2}
+\par Simplemente realiza una llamada a una función auxiliar \textit{golosoDeterministico} (ver sección \ref{sec: anexo_ejercicio}).
+\begin{lstlisting}
+class ejercicio2 : ejercicio{
+private:
+
+public:
+  ejercicio2 () : ejercicio(){}
+
+  void correr() {
+
+    if (!entrada_invalida) {
+      golosoDeterministico();
+    }
+    imprimir();
+    return;
+  }
+
+  virtual ~ejercicio2 (){};
+};
+\end{lstlisting}
+
+\subsection{Ejercicio 3}
+\label{sec: anexo_ejercicio3}
+\par Simplemente realiza una llamada a la función auxiliar \textit{golosoDeterministico} (ver sección \ref{sec: anexo_ejercicio}) y luego realiza una llamada a \textit{busquedaLocal} (ver sección \ref{sec: anexo_ejercicio}).
+\begin{lstlisting}
+class ejercicio3 : ejercicio{
+private:
+
+public:
+  ejercicio3 () : ejercicio(){}
+
+  void correr(){
+    //string codigo_caso;
+    string codigo_vecindades = "1111";
+
+    if (!entrada_invalida) {
+
+      //--calcula una solucion inicial (goloso)
+      golosoDeterministico();
+
+      if (distanciaMinima > 0) {
+        busquedaLocal(codigo_vecindades);
+      }
+    }
+
+    imprimir();
+  }
+}
+\end{lstlisting}
+
+\newpage
+
+\subsection{Ejercicio 4}
+\label{sec: anexo_ejercicio4}
+\par Utiliza las funciones auxiliares \textit{busquedaLocal}, \textit{calculaGoloso} de la sección \ref{sec: anexo_ejercicio}
+\begin{lstlisting}
+class ejercicio4 : ejercicio{
+private:
+  int cant_gimnasios;
+  int cant_paradas;
+  struct timeval time;
+  double tiempo_total = 0;
+  double tiempo_inicio, tiempo_fin;
+  string codigo_vecindad = "1111";
+
+
+public:
+  ejercicio4 () : ejercicio(){}
+  void correr(){
+    
+    //clock_t inicio = clock();
+    cant_gimnasios = gimnasios.size();
+    cant_paradas = pokeparadas.size();
+
+    //-- si ya nos dimos cuenta que la entrada no tenia solucion => ni corremos
+    if (!entrada_invalida) {
+
+      // se toma una solucion auxiliar para ir almacenando un minimo
+      vector<int> solucion_parcial;
+      double dist_parcial = -1;
+
+        //-- vamos a iniciar un goloso desde cada parada
+        for (int p = 0; p < cant_paradas; p++) {
+
+          //-- vamos a iniciar un goloso con cada criterio de eleccion de gimnasios
+          //-- 0 -> mas cercano primero
+          //-- 1 -> mas lejano primero
+          //-- 2 -> mas pociones necesarias primero
+          //-- 3 -> menos pociones necesarias primero
+          for (int c = 0; c < 4; c++) {
+
+            //----SOLUCION INICIAL -> un goloso que arranca en la parada p con el criterio de eleccion de gimnasios c
+            int ranking;
+            if(gimnasios.size() < 2){
+              ranking = 1;
+            }else{
+              ranking = (int)gimnasios.size()*0.5;
+            }
+            calculaGoloso(cant_gimnasios + p, c, ranking);
+
+            if (distanciaMinima > 0) {
+              //----HEURISTICA
+              busquedaLocal(codigo_vecindad);
+
+              double dist_sol = calcularDistancia(solucion);
+
+              if(dist_parcial < 0 || dist_sol < dist_parcial) {
+                solucion_parcial = solucion;
+                dist_parcial = dist_sol;
+              }
+            }
+            
+            if (clock() - inicio > 10000000) {
+              // si estoy tardando mucho me salteo pokeparadas iniciales
+              p += (int) cant_paradas*0.4;
+              break;
+            }
+
+          }
+
+        }
+      solucion = solucion_parcial;
+      distanciaMinima = calcularDistancia(solucion);
+    }
+    imprimir();
+  }
+};
+\end{lstlisting}

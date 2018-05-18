@@ -1,0 +1,25 @@
+1_0
+	no guarda instancias
+
+1_1
+	guarda instancias
+
+1_2
+	guarda instancias
+	chequea que la distancia de la instancia a calcular no sea mayor que la minima parcial ya calculada
+	chequea que la distancia de la instancia a calcular no sea mayor que la minima global ya calculada
+
+1_3
+	guarda instancias
+	chequea que la distancia de la instancia a calcular no sea mayor que la minima parcial ya calculada
+	chequea que la distancia de la instancia a calcular no sea mayor que la minima global ya calculada
+	ordena los gimnasios por distancia
+	ordena las paradas por distancia
+
+1_4
+	guarda instancias
+	chequea que la distancia de la instancia a calcular no sea mayor que la minima parcial ya calculada
+	chequea que la distancia de la instancia a calcular no sea mayor que la minima global ya calculada
+	ordena los gimnasios por distancia
+	ordena las paradas por distancia
+	utiliza una solucion golosa como primera cota superior
